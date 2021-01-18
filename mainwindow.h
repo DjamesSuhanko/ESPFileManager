@@ -11,6 +11,8 @@
 #include <QHeaderView>
 #include <QDialogButtonBox>
 #include <QClipboard>
+#include <QMessageBox>
+#include <QFile>
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -34,6 +36,9 @@ public:
     bool ON = false;
 
     QString msg;
+    QString originalFilename;
+    QString renamedFile;
+    QStringList filesPath;
 
 public slots:
     void updateFormatsTable(const QMimeData *mimeData);
@@ -45,11 +50,11 @@ public slots:
     void listFiles();
     void readFile();
     //void removeAllFiles();
-    void renameFile();
     void sender();
     void writeFile();
     void onTableItemChanged(QTableWidgetItem *item);
     void onTableCellDoubleClicked(int row, int column);
+    void helpButtonSlot();
 
 signals:
     void sendMsg();
@@ -70,8 +75,8 @@ private:
     QPushButton *deleteButton;
     QPushButton *formatButton;
     QPushButton *readButton;
-    QPushButton *renameButton;
     QPushButton *writeButton;
+    QPushButton *UsageHelpButton;
 
     QDialogButtonBox *buttonBox;
 };

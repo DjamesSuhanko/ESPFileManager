@@ -56,13 +56,13 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     formatsTable->setHorizontalHeaderLabels(labels);
     formatsTable->horizontalHeader()->setStretchLastSection(true);
 
-    clearButton  = new QPushButton(tr("Limpar"));
-    copyButton   = new QPushButton(tr("Salvar"));
-    quitButton   = new QPushButton(tr("Sair"));
-    readButton   = new QPushButton(tr("Ler"));
-    writeButton  = new QPushButton(tr("Escrever"));
-    deleteButton = new QPushButton(tr("Excluir"));
-    renameButton = new QPushButton(tr("Renomear"));
+    clearButton     = new QPushButton(tr("Limpar"));
+    copyButton      = new QPushButton(tr("Salvar"));
+    quitButton      = new QPushButton(tr("Sair"));
+    readButton      = new QPushButton(tr("Ler"));
+    writeButton     = new QPushButton(tr("Escrever"));
+    deleteButton    = new QPushButton(tr("Excluir"));
+    UsageHelpButton = new QPushButton(tr("Ajuda"));
 
     buttonBox = new QDialogButtonBox;
     buttonBox->addButton(clearButton, QDialogButtonBox::ActionRole);
@@ -70,7 +70,7 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     buttonBox->addButton(readButton, QDialogButtonBox::ActionRole);
     buttonBox->addButton(writeButton, QDialogButtonBox::ActionRole);
     buttonBox->addButton(deleteButton, QDialogButtonBox::ActionRole);
-    buttonBox->addButton(renameButton, QDialogButtonBox::ActionRole);
+    buttonBox->addButton(UsageHelpButton, QDialogButtonBox::ActionRole);
 
 
 #if !QT_CONFIG(clipboard)
@@ -83,10 +83,10 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     connect(clearButton, &QAbstractButton::clicked, dropArea, &DropArea::clear);
     connect(copyButton, &QAbstractButton::clicked, this, &MainWindow::copy);
 
-    connect(this->readButton, SIGNAL(clicked(bool)), this, SLOT(readFile()));
-    connect(this->writeButton, SIGNAL(clicked(bool)), this, SLOT(writeFile()));
+    connect(this->readButton, SIGNAL(clicked(bool)),   this, SLOT(readFile()));
+    connect(this->writeButton, SIGNAL(clicked(bool)),  this, SLOT(writeFile()));
     connect(this->deleteButton, SIGNAL(clicked(bool)), this, SLOT(deleteFile()));
-    connect(this->renameButton, SIGNAL(clicked(bool)), this, SLOT(renameFile()));
+    connect(this->UsageHelpButton,SIGNAL(clicked(bool)),this,SLOT(helpButtonSlot()));
 
     //formatsTable - signals: itemChanged(QtableWidgetItem *item)
     //connect(this->formatsTable,SIGNAL(cellChanged(int row, int col)),this,SLOT(writeFile()));
@@ -166,6 +166,7 @@ void MainWindow::updateFormatsTable(const QMimeData *mimeData)
     }
 
     uint8_t len = 0;
+    filesPath.clear();
     for (const QString &format : formats) {
         QTableWidgetItem *formatItem = new QTableWidgetItem(format);
 
@@ -179,7 +180,8 @@ void MainWindow::updateFormatsTable(const QMimeData *mimeData)
             //remove path do texto
             //int idx = text.lastIndexOf("/");
             //QString filename = text.remove(0,idx+1);
-            qDebug() << text;
+            filesPath << text.replace("file://","").split(" ");
+
 
         } else if (format == QLatin1String("text/markdown")) {
             text = QString::fromUtf8(mimeData->data(QLatin1String("text/markdown")));
@@ -235,11 +237,6 @@ void MainWindow::readFile()
     qDebug() << "read file";
 }
 
-void MainWindow::renameFile() //pega o nome selecionado e pede o novo nome
-{
-    qDebug() << "rename";
-}
-
 void MainWindow::writeFile() //perguntar o modo se já existir (append ou overwrite)
 {
     qDebug() << "write";
@@ -247,12 +244,37 @@ void MainWindow::writeFile() //perguntar o modo se já existir (append ou overwr
 
 void MainWindow::onTableItemChanged(QTableWidgetItem *item)
 {
-    qDebug() << "ITEM CHANGED";
-    qDebug() << item->text();
-    qDebug() << "END ITEM CHANGED";
+    this->renamedFile = item->text();
+    qDebug() << this->renamedFile;
+
+
+    if (!QFile::exists(this->originalFilename)){
+        qDebug() << "ARQUIVO INEXISTENTE (QFile file)";
+        return;
+    }
+    QFile file(this->originalFilename);
+    file.open(QIODevice::WriteOnly | QIODevice::Text);
+    file.rename(this->renamedFile);
+    file.close();
 }
 
 void MainWindow::onTableCellDoubleClicked(int row, int column)
 {
-   qDebug() << formatsTable->item(row, column)->text();
+   this->originalFilename = formatsTable->item(row, column)->text();
+   qDebug() <<  this->originalFilename << " ORIGINAL FILENAME";
+   qDebug() << "filesPath stringlist";
+   qDebug() << filesPath.at(0);
+   qDebug() << filesPath.at(1);
+}
+
+void MainWindow::helpButtonSlot()
+{
+    QMessageBox msgBox;
+    msgBox.setText("Arraste os arquivos para a área designada para carregar na interface.\n"
+                    "Duplo click em Nome se deseja renomear o arquivo antes de enviar\n"
+                    "\n\n"
+                    "Do bit Ao Byte\n"
+                    "www.dobitaobyte.com.br\n"
+                    "youtube.com/dobitaobytebrasil\n");
+    msgBox.exec();
 }
