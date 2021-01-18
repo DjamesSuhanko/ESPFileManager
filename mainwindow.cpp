@@ -206,6 +206,7 @@ void MainWindow::updateFormatsTable(const QMimeData *mimeData)
     }//for
 
     connect(formatsTable, &QTableWidget::itemChanged, this, &MainWindow::onTableItemChanged);
+    connect(formatsTable, &QTableWidget::cellDoubleClicked, this, &MainWindow::onTableCellDoubleClicked);
 
     formatsTable->resizeColumnToContents(0);
 #if QT_CONFIG(clipboard)
@@ -249,4 +250,9 @@ void MainWindow::onTableItemChanged(QTableWidgetItem *item)
     qDebug() << "ITEM CHANGED";
     qDebug() << item->text();
     qDebug() << "END ITEM CHANGED";
+}
+
+void MainWindow::onTableCellDoubleClicked(int row, int column)
+{
+   qDebug() << formatsTable->item(row, column)->text();
 }

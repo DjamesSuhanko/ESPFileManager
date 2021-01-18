@@ -49,6 +49,7 @@ public slots:
     void sender();
     void writeFile();
     void onTableItemChanged(QTableWidgetItem *item);
+    void onTableCellDoubleClicked(int row, int column);
 
 signals:
     void sendMsg();
