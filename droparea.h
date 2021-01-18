@@ -69,7 +69,7 @@ public slots:
     void clear();
 
 signals:
-    void changed(const QMimeData *mimeData = nullptr);
+    void changed(const QMimeData *mimeData = nullptr, QString source = "local");
 //! [DropArea header part1]
 
 //! [DropArea header part2]

@@ -73,7 +73,7 @@ void DropArea::dragEnterEvent(QDragEnterEvent *event)
     setBackgroundRole(QPalette::Highlight);
 
     event->acceptProposedAction();
-    emit changed(event->mimeData());
+    emit changed(event->mimeData(),"local");
 }
 //! [dragEnterEvent() function]
 

@@ -35,13 +35,25 @@ public:
 
     bool ON = false;
 
+    int rowColumnNowValues[2] = {0};
     QString msg;
     QString originalFilename;
+    QString actualCellContent;
     QString renamedFile;
+    /* tableSource indica a origem do arquivo para tratar conforme a condição.
+     * Se tableSource == 'serial', as ações são na comunicação.
+     * Se tableSource == 'local', está carregando arquivos do computador.
+    */
+    QString tableSource;
     QStringList filesPath;
+    QStringList espFiles;
+    QStringList dataFromSerial;
+
+    void tableSerial();
+    void tableLocal(const QMimeData *mimeData);
 
 public slots:
-    void updateFormatsTable(const QMimeData *mimeData);
+    void updateFormatsTable(const QMimeData *mimeData, QString source);
     void copy();
 
     void connectToSerial();
@@ -54,13 +66,14 @@ public slots:
     void writeFile();
     void onTableItemChanged(QTableWidgetItem *item);
     void onTableCellDoubleClicked(int row, int column);
+    void onTableCellClicked(int row, int column);
     void helpButtonSlot();
+    void serialWrite();
 
 signals:
     void sendMsg();
-
-
-signals:
+    void isDone();
+    void fromSerial(const QMimeData *mimeData, QString source);
     void signalListFiles();
 
 private:
