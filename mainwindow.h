@@ -46,7 +46,6 @@ public:
     */
     QString tableSource;
     QStringList filesPath;
-    QStringList espFiles;
     QStringList dataFromSerial;
 
     void tableSerial();
@@ -64,6 +63,7 @@ public slots:
     //void removeAllFiles();
     void sender();
     void writeFile();
+    void renameFile(QString orig, QString newName);
     void onTableItemChanged(QTableWidgetItem *item);
     void onTableCellDoubleClicked(int row, int column);
     //void onTableCellClicked(int row, int column);

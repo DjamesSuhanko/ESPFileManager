@@ -42,13 +42,14 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
 
     /*! Area para soltar o arquivo
         Conecta o sinal do drop area com o método updateFormatsTable
-        O sinal envia os dados MIME do arquivo
+        O sinal envia os dados MIME do arquivo.
+        Os connects abaixo estão no novo formato do Qt.
     */
     dropArea = new DropArea;
     connect(dropArea, &DropArea::changed,this, &MainWindow::updateFormatsTable);
     connect(this, &MainWindow::fromSerial,this,&MainWindow::updateFormatsTable);
     QStringList labels;
-    labels << tr("Name") << tr("Path");
+    labels << tr("Filename") << tr("Path");
 
     formatsTable = new QTableWidget;
     formatsTable->setColumnCount(2);
@@ -125,16 +126,27 @@ void MainWindow::listFiles()
 
 void MainWindow::connectToSerial()
 {
+    //Se a porta estiver aberta, ele fecha e sai...
     if (this->serialPort->isOpen()){
         this->serialPort->close();
         ui->label_status->setText("Disconnected");
         ui->pushButton_connect->setText("Connect");
+        /*
+         * Limpa os dados vindos da serial ao desconectar
+         *  para não entrar em loop
+         */
+        this->originalFilename.clear();
+        this->renamedFile.clear();
+        this->dataFromSerial.clear();
+        formatsTable->setRowCount(0);
         return;
     }
 
+    //...se não, pega os valores dos combos para iniciar a conexão...
     this->serialPort->setPortName(ui->comboBox_port->currentText());
     this->serialPort->setBaudRate(ui->comboBox_baud->currentText().toUInt());
 
+    //...e abre a porta aqui.
     if (!this->serialPort->open(QIODevice::ReadWrite)){
         ui->label_status->setText("Failed to connect");
         return;
@@ -142,7 +154,6 @@ void MainWindow::connectToSerial()
 
     //Se conectou, aqui não precisa mais de verificação.
     ui->label_status->setText("Connected");
-    ui->pushButton_connect->setText("Disconnect");
 
     //Antes de listar os arquivos, preparar a flag para o table widget saber a origem.
     //const QMimeData *mimeData = new QMimeData();
@@ -170,7 +181,7 @@ void MainWindow::updateFormatsTable(const QMimeData *mimeData, QString source) /
         qDebug() << "LOCAL";
     }
     else if (source == "serial"){ //TODO: descomentar AQUI !!!!!!
-        //this->tableSerial();
+        this->tableSerial();
         this->tableSource = "serial";
         qDebug() << "SERIAL";
     }
@@ -186,18 +197,22 @@ void MainWindow::updateFormatsTable(const QMimeData *mimeData, QString source) /
  */
 void MainWindow::serialWrite()
 {
-    //TODO: remover essas duas linhas e colocar timeout pra serial, senao trava a janela
-    qDebug() << "escrever";
-    return;
     if (!this->serialPort->isOpen()){
-        qDebug() << "PORTA FECHADA (serialWrite())";
+        qDebug() << "PORTA FECHADA (serialWrite())"; //TODO: ver quais debugs precisa virar DIALOG
         return;
     }
+    ui->pushButton_connect->setText("Disconnect");
     this->serialPort->write(this->msg.toUtf8());
+    while (!this->serialPort->waitForBytesWritten(3000)){
+
+    }
+    while (this->serialPort->waitForReadyRead(2000));
     QByteArray data = this->serialPort->readAll();
+    qDebug() << data << " data";
     QString clearFirst = QString::fromUtf8(data);
     clearFirst.replace("^","");
-    this->dataFromSerial << clearFirst.split("$");
+    this->dataFromSerial << clearFirst.split("\r\n");
+    qDebug() << this->dataFromSerial << " dataFromSerial";
 
     emit fromSerial(NULL, QString("serial"));
     //TODO: verificar se esse split vai cortar certo ou se vai dar um campo a mais por $ estar no fim
@@ -212,6 +227,12 @@ void MainWindow::copy()
         text += formatsTable->item(row, 0)->text() + ": " + formatsTable->item(row, 1)->text() + '\n';
     QGuiApplication::clipboard()->setText(text);
 #endif
+}
+
+void MainWindow::renameFile(QString orig, QString newName)
+{
+    this->msg = "^" + orig + "-m-" + newName + "$";
+    emit sendMsg();
 }
 
 void MainWindow::deleteFile()
@@ -275,10 +296,15 @@ void MainWindow::onTableItemChanged(QTableWidgetItem *item)
      * Se a coluna atual for 0, significa que foi renomeado nela,
      * então pegamos o valor da coluna 1 para fazer o replace e
      * reatribuímos o valor da célula.
+     *
+     * TODO: acho que resolvi mudança a coluna em outro método.
     */
 
     //if ()
 
+    /*Renomear a porta serial não é problema. Ao fim, tem que recarregar os
+      arquivos com um novo list
+    */
     if (currentCol == 0){
         nameField = true;
         QTableWidgetItem *pCell = formatsTable->item(currrentRow,1);
@@ -291,8 +317,11 @@ void MainWindow::onTableItemChanged(QTableWidgetItem *item)
         //formatsTable->setItem(rowColumnNowValues[0],1,pCell);
     }
 
-
-
+    //TODO: limpar essa variável quando fizer drop ou descobrir a origem do item de outra maneira
+    if (this->dataFromSerial.length() > 0){
+        this->renameFile(this->originalFilename,this->renamedFile); //232 à esquerda. TODO: fazer connect
+        return;
+    }
     QString target = nameField ? fullPath : this->originalFilename;
     if (!QFile::exists(this->originalFilename)){
         qDebug() << this->originalFilename << "DEBUG ORIGFNAME";
@@ -325,7 +354,10 @@ void MainWindow::onTableItemChanged(QTableWidgetItem *item)
 void MainWindow::onTableCellDoubleClicked(int row, int column)
 {
    //o caminho completo sempre será a coluna 1, por isso já garantimos aqui para renomear
-   this->originalFilename = formatsTable->item(row, 1)->text();
+   //se for serial, tem que pegar a coluna 0
+   QString tmp =formatsTable->item(row, 1)->text();
+   int idx =  tmp == "serial" ? 0 : 1;
+   this->originalFilename = formatsTable->item(row, idx)->text();
    qDebug() <<  this->originalFilename << " ORIGINAL FILENAME";
 }
 
@@ -353,13 +385,13 @@ void MainWindow::tableSerial()
     copyButton->setEnabled(false);
 
     // informação do mime ---------------------------------------
-    if (this->espFiles.length() < 1){
+    if (this->dataFromSerial.length() < 1){
         return;
     }
 
-    uint8_t len = 0;
+    uint8_t len = this->dataFromSerial.length();
     filesPath.clear();
-    for (const QString &format : espFiles) {
+    for (const QString &format : dataFromSerial) {
         QTableWidgetItem *formatItem = new QTableWidgetItem(format);
 
         formatItem->setFlags(Qt::ItemIsEnabled);
@@ -378,15 +410,14 @@ void MainWindow::tableSerial()
             text = "logs";
         }
         for (uint8_t x=0;x<len;x++){
-            QString path     = ui->comboBox_port->currentText();
+            QString path     = "serial";
 
-            QString filename = espFiles.at(x);
+            QString filename = dataFromSerial.at(x);
 
             int row = formatsTable->rowCount();
             formatsTable->insertRow(row);
             formatsTable->setItem(row, 0, new QTableWidgetItem(filename));
             formatsTable->setItem(row, 1, new QTableWidgetItem(path));
-
         }
 
     }//for
