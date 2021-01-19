@@ -66,7 +66,7 @@ public slots:
     void writeFile();
     void onTableItemChanged(QTableWidgetItem *item);
     void onTableCellDoubleClicked(int row, int column);
-    void onTableCellClicked(int row, int column);
+    //void onTableCellClicked(int row, int column);
     void helpButtonSlot();
     void serialWrite();
 

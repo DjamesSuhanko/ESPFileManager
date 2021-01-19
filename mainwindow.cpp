@@ -57,10 +57,10 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     formatsTable->horizontalHeader()->setStretchLastSection(true);
 
     clearButton     = new QPushButton(tr("Clear"));
-    copyButton      = new QPushButton(tr("Save"));
+    copyButton      = new QPushButton(tr("Copy"));
     quitButton      = new QPushButton(tr("Exit"));
     readButton      = new QPushButton(tr("Read"));
-    writeButton     = new QPushButton(tr("Write"));
+    writeButton     = new QPushButton(tr("Save"));
     deleteButton    = new QPushButton(tr("Delete"));
     UsageHelpButton = new QPushButton(tr("Help"));
 
@@ -90,9 +90,8 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
 
     //!Desabilita os botões de comunicação até que esteja conectado
     this->readButton->setDisabled(true);
-    //this->writeButton->setDisabled(true);
+    this->writeButton->setDisabled(true);
     this->deleteButton->setDisabled(true);
-    //TODO: falta implementar o saveButton
 
     /*! Os métodos de interação serial formata a mensagem e emitem um sinal para a escrita.
        O método serialWrite é o único que escreve para a serial, ele gerencia apenas isso e
@@ -167,10 +166,12 @@ void MainWindow::updateFormatsTable(const QMimeData *mimeData, QString source) /
 {
     if (source == "local"){
         this->tableLocal(mimeData);
+        this->tableSource = "local";
         qDebug() << "LOCAL";
     }
     else if (source == "serial"){ //TODO: descomentar AQUI !!!!!!
         //this->tableSerial();
+        this->tableSource = "serial";
         qDebug() << "SERIAL";
     }
     else{
@@ -240,17 +241,59 @@ void MainWindow::writeFile() //perguntar o modo se já existir (append ou overwr
     qDebug() << this->rowColumnNowValues[1];
     qDebug() << "---------";
 }
+/*! onTableItemChanged
+Existem 2 condições para a mudança do valor na célula.
 
+- Se o arquivo foi carregado na aplicação para fazer upload,
+então renomeá-la deverá ter efeito local.
+- Se o arquivo foi carregado do ESP, então o renome será remoto.
+*/
 void MainWindow::onTableItemChanged(QTableWidgetItem *item)
-{
+{ //voltar pra linha 165 à esquerda
+    //!Primeira coisa, pegar o valor que está na célula
     this->renamedFile = item->text();
-    qDebug() << this->renamedFile << "renamedFIile...";
 
-    /*TODO: pegar no método acima como detectar a coluna.
-     * Se estiver na coluna 0 e for modificada, fazer regex
-     * na coluna 1 para renomear o arquivo de fato.
+    /*! onTableItemChanged
+    Temos um campo de nome e um campo do caminho absoluto do arquivo.
+    Se o renome for feito no campo 'Name', quando pegar o caminho absoluto
+    estará com o nome antigo. Esse boolean servirá para informar a origem
+    do renome.
+    */
+    bool nameField = false;
+    /*! onTableItemChanged
+     *  Utilizado para guardar  o caminho absoluto para replace
+     */
+    QString fullPath;
+
+    int currrentRow   = formatsTable->currentRow();
+    int currentCol    = formatsTable->currentColumn();
+
+    //TRATAMENTO DO PATH SE O  RENAME FOI  FEITO  NA  COLUNA  'NAME'
+    /*
+     * se o rename foi feito na coluna Name, tem que acertar o nome
+     * no caminho absoluto e usar o caminho absoluto  pra  renomear.
+     * Se a coluna atual for 0, significa que foi renomeado nela,
+     * então pegamos o valor da coluna 1 para fazer o replace e
+     * reatribuímos o valor da célula.
     */
 
+    //if ()
+
+    if (currentCol == 0){
+        nameField = true;
+        QTableWidgetItem *pCell = formatsTable->item(currrentRow,1);
+        fullPath                = pCell->text();
+
+        QStringList origFname = this->originalFilename.split("/");
+        fullPath.replace(origFname.last(),this->renamedFile);
+        pCell->setText(fullPath);
+        //se não fosse uma tableWidget já atribuída...
+        //formatsTable->setItem(rowColumnNowValues[0],1,pCell);
+    }
+
+
+
+    QString target = nameField ? fullPath : this->originalFilename;
     if (!QFile::exists(this->originalFilename)){
         qDebug() << this->originalFilename << "DEBUG ORIGFNAME";
         qDebug() << "ARQUIVO INEXISTENTE (QFile file)";
@@ -260,19 +303,29 @@ void MainWindow::onTableItemChanged(QTableWidgetItem *item)
     file.open(QIODevice::WriteOnly | QIODevice::Text);
     file.rename(this->renamedFile);
     file.close();
-}
 
-void MainWindow::onTableCellClicked(int row, int column)
-{
-    this->actualCellContent = formatsTable->item(row, column)->text();
-    qDebug() << this->actualCellContent;
-
+    //... e o resultado...
+    qDebug() << this->renamedFile << "renamedFIile...";
 
 }
+
+    //if (this->tableSource == "serial"){}
+//} TODO: como descobrir se o dado na lista é serial ou local?
+
+/*void MainWindow::onTableCellClicked(int row, int column)
+{//246 à direita
+    //this->actualCellContent = formatsTable->item(row, column)->text();
+    //qDebug() << this->actualCellContent;
+    qDebug() << "ping...";
+    //TODO: ou funciona, ou substitui pela posição atual da celula
+
+
+}*/
 
 void MainWindow::onTableCellDoubleClicked(int row, int column)
 {
-   this->originalFilename = formatsTable->item(row, column)->text();
+   //o caminho completo sempre será a coluna 1, por isso já garantimos aqui para renomear
+   this->originalFilename = formatsTable->item(row, 1)->text();
    qDebug() <<  this->originalFilename << " ORIGINAL FILENAME";
 }
 
@@ -340,7 +393,9 @@ void MainWindow::tableSerial()
 
     connect(formatsTable, &QTableWidget::itemChanged, this, &MainWindow::onTableItemChanged);
     connect(formatsTable, &QTableWidget::cellDoubleClicked, this, &MainWindow::onTableCellDoubleClicked);
-    connect(formatsTable, &QTableWidget::cellClicked, this, &MainWindow::onTableCellClicked);
+    //connect(formatsTable, &QTableWidget::cellClicked, this, &MainWindow::onTableCellClicked);
+    //esse tb não deu
+    //connect(formatsTable,SIGNAL(cellClicked(int,int)),this,SLOT(onTableCellClicked(int,int)));
 
     formatsTable->resizeColumnToContents(0);
 
