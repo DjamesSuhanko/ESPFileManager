@@ -180,23 +180,24 @@ void MainWindow::updateFormatsTable(const QMimeData *mimeData, QString source) /
         this->tableSource = "local";
         qDebug() << "LOCAL";
     }
-    else if (source == "serial"){ //TODO: descomentar AQUI !!!!!!
+    else if (source == "serial"){
         this->tableSerial();
         this->tableSource = "serial";
         qDebug() << "SERIAL";
     }
-    else{
-        //Não é para haver outra condição, mas em todo o caso, uma segurança a mais.
-        return;
-    }
-
 }
 
 /*!O sinal emit fromSerial(NULL, QString("serial")) está conectado ao
  * slot updateFormatsTable, que avalia a string pra saber se é "serial" ou "local".
  */
+//TODO: Será que alguma flag precisa ser zerada para parar a realimentação da tableWidget?
 void MainWindow::serialWrite()
 {
+    /*! O método serialWrite é invocado pelo sinal sendMsg dos métodos de manipulação
+     *  (writeFile, renameFile etc).
+     *  Esse método escreve a mensagem, lê a resposta, guarda na stringList @dataFromSerial
+     *  e invoca o método @updateFormatsTable para alimentar a tabela através do signal @fromSerial.
+    */
     if (!this->serialPort->isOpen()){
         qDebug() << "PORTA FECHADA (serialWrite())"; //TODO: ver quais debugs precisa virar DIALOG
         return;
@@ -208,15 +209,16 @@ void MainWindow::serialWrite()
     }
     while (this->serialPort->waitForReadyRead(2000));
     QByteArray data = this->serialPort->readAll();
-    qDebug() << data << " data";
+    //qDebug() << data << " data";
     QString clearFirst = QString::fromUtf8(data);
     clearFirst.replace("^","");
     this->dataFromSerial << clearFirst.split("\r\n");
+    this->dataFromSerial.removeLast(); //last é vazio, já constatado
     qDebug() << this->dataFromSerial << " dataFromSerial";
 
-    emit fromSerial(NULL, QString("serial"));
-    //TODO: verificar se esse split vai cortar certo ou se vai dar um campo a mais por $ estar no fim
+    //if (this->dataFromSerial.contains(this->originalFilename)) return;
 
+    emit fromSerial(NULL, QString("serial"));
 }
 
 void MainWindow::copy()
@@ -230,7 +232,11 @@ void MainWindow::copy()
 }
 
 void MainWindow::renameFile(QString orig, QString newName)
-{
+{   //REMOVER IF
+    if (this->lastItemChanged.contains(this->renamedFile)){
+        return;
+    }
+    this->lastItemChanged << this->renamedFile;
     this->msg = "^" + orig + "-m-" + newName + "$";
     emit sendMsg();
 }
@@ -271,6 +277,7 @@ então renomeá-la deverá ter efeito local.
 */
 void MainWindow::onTableItemChanged(QTableWidgetItem *item)
 { //voltar pra linha 165 à esquerda
+
     //!Primeira coisa, pegar o valor que está na célula
     this->renamedFile = item->text();
 
@@ -311,6 +318,7 @@ void MainWindow::onTableItemChanged(QTableWidgetItem *item)
         fullPath                = pCell->text();
 
         QStringList origFname = this->originalFilename.split("/");
+
         fullPath.replace(origFname.last(),this->renamedFile);
         pCell->setText(fullPath);
         //se não fosse uma tableWidget já atribuída...
@@ -321,7 +329,7 @@ void MainWindow::onTableItemChanged(QTableWidgetItem *item)
     if (this->dataFromSerial.length() > 0){
         this->renameFile(this->originalFilename,this->renamedFile); //232 à esquerda. TODO: fazer connect
         return;
-    }
+    }//233 à esquerda
     QString target = nameField ? fullPath : this->originalFilename;
     if (!QFile::exists(this->originalFilename)){
         qDebug() << this->originalFilename << "DEBUG ORIGFNAME";
@@ -375,10 +383,13 @@ void MainWindow::helpButtonSlot()
 
 void MainWindow::tableSerial()
 {
+    disconnect(formatsTable, &QTableWidget::itemChanged, this, &MainWindow::onTableItemChanged);
+    disconnect(formatsTable, &QTableWidget::cellDoubleClicked, this, &MainWindow::onTableCellDoubleClicked);
     //se o texto do botão for "connect" é porque ainda não está conectado. Encerra aqui mesmo.
     if (ui->pushButton_connect->text() == "Connect"){
         return;
     }
+
     this->originalFilename.clear();
     this->renamedFile.clear();
     formatsTable->setRowCount(0);
@@ -391,6 +402,7 @@ void MainWindow::tableSerial()
 
     uint8_t len = this->dataFromSerial.length();
     filesPath.clear();
+    uint8_t x = 0;
     for (const QString &format : dataFromSerial) {
         QTableWidgetItem *formatItem = new QTableWidgetItem(format);
 
@@ -409,18 +421,24 @@ void MainWindow::tableSerial()
         else if (format.contains(".log")) {
             text = "logs";
         }
-        for (uint8_t x=0;x<len;x++){
-            QString path     = "serial";
 
-            QString filename = dataFromSerial.at(x);
+        qDebug() << "-------";
+        qDebug() << x;
+        qDebug() << len;
+        QString path     = "serial";
 
-            int row = formatsTable->rowCount();
-            formatsTable->insertRow(row);
-            formatsTable->setItem(row, 0, new QTableWidgetItem(filename));
-            formatsTable->setItem(row, 1, new QTableWidgetItem(path));
-        }
+        QString filename = dataFromSerial.at(x);
+        qDebug() << filename;
+        qDebug() << "-------";
+
+        int row = formatsTable->rowCount();
+        formatsTable->insertRow(row);
+        formatsTable->setItem(row, 0, new QTableWidgetItem(filename));
+        formatsTable->setItem(row, 1, new QTableWidgetItem(path));
+        x++;
 
     }//for
+    qDebug() << dataFromSerial;
 
     connect(formatsTable, &QTableWidget::itemChanged, this, &MainWindow::onTableItemChanged);
     connect(formatsTable, &QTableWidget::cellDoubleClicked, this, &MainWindow::onTableCellDoubleClicked);

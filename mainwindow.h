@@ -34,6 +34,8 @@ public:
     QSerialPort *serialPort;
 
     bool ON = false;
+    QStringList lastItemChanged;
+    bool stopNow = false;
 
     int rowColumnNowValues[2] = {0};
     QString msg;
