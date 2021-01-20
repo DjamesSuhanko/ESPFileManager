@@ -13,6 +13,8 @@
 #include <QClipboard>
 #include <QMessageBox>
 #include <QFile>
+#include <QTimer>
+#include <QMessageBox>
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -36,6 +38,7 @@ public:
     bool ON = false;
     QStringList lastItemChanged;
     bool stopNow = false;
+    bool do_edit = false;
 
     int rowColumnNowValues[2] = {0};
     QString msg;
@@ -70,6 +73,7 @@ public slots:
     //void onTableCellClicked(int row, int column);
     void helpButtonSlot();
     void serialWrite();
+    void dropHandler();
 
 signals:
     void sendMsg();
@@ -77,6 +81,7 @@ signals:
     void fromSerial(const QMimeData *mimeData, QString source);
     void signalListFiles();
     void filesToWrite(QStringList filesTo);
+    void startTableSerial();
 
 private:
     Ui::MainWindow *ui;

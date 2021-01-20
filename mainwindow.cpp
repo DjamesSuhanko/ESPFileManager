@@ -40,7 +40,7 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     //connect(ui->pushButton_exec,SIGNAL(clicked(bool)),this,SLOT(sender())); //envia a mensagem conforme a seleção na ui
 
     //DEBUG
-    abstractLabel = new QLabel(tr("Drag and drop files to field below"));
+    abstractLabel = new QLabel(tr("Drag and drop files to field below and WAIT auto-reconnection."));
     abstractLabel->setWordWrap(true);
     abstractLabel->adjustSize();
 
@@ -61,32 +61,32 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     formatsTable->setHorizontalHeaderLabels(labels);
     formatsTable->horizontalHeader()->setStretchLastSection(true);
 
-    clearButton     = new QPushButton(tr("Clear"));
-    copyButton      = new QPushButton(tr("Copy"));
-    quitButton      = new QPushButton(tr("Exit"));
+    //clearButton     = new QPushButton(tr("Clear"));
+    //copyButton      = new QPushButton(tr("Copy"));
+    //quitButton      = new QPushButton(tr("Exit"));
     readButton      = new QPushButton(tr("Read"));
-    writeButton     = new QPushButton(tr("Save"));
+    //writeButton     = new QPushButton(tr("Save"));
     deleteButton    = new QPushButton(tr("Delete"));
     UsageHelpButton = new QPushButton(tr("Help"));
 
     buttonBox = new QDialogButtonBox;
-    buttonBox->addButton(clearButton, QDialogButtonBox::ActionRole);
-    buttonBox->addButton(copyButton, QDialogButtonBox::ActionRole);
+    //buttonBox->addButton(clearButton, QDialogButtonBox::ActionRole);
+    //buttonBox->addButton(copyButton, QDialogButtonBox::ActionRole);
     buttonBox->addButton(readButton, QDialogButtonBox::ActionRole);
-    buttonBox->addButton(writeButton, QDialogButtonBox::ActionRole);
+    //buttonBox->addButton(writeButton, QDialogButtonBox::ActionRole);
     buttonBox->addButton(deleteButton, QDialogButtonBox::ActionRole);
     buttonBox->addButton(UsageHelpButton, QDialogButtonBox::ActionRole);
 
 
 #if !QT_CONFIG(clipboard)
-    copyButton->setVisible(false);
+    //copyButton->setVisible(false);
 #endif
 
-    buttonBox->addButton(quitButton, QDialogButtonBox::RejectRole);
+    //buttonBox->addButton(quitButton, QDialogButtonBox::RejectRole);
 
-    connect(quitButton, &QAbstractButton::clicked, this, &QWidget::close);
-    connect(clearButton, &QAbstractButton::clicked, dropArea, &DropArea::clear);
-    connect(copyButton, &QAbstractButton::clicked, this, &MainWindow::copy);
+    //connect(quitButton, &QAbstractButton::clicked, this, &QWidget::close);
+    //connect(clearButton, &QAbstractButton::clicked, dropArea, &DropArea::clear);
+    //connect(copyButton, &QAbstractButton::clicked, this, &MainWindow::copy);
 
     connect(this->readButton, SIGNAL(clicked(bool)),   this, SLOT(readFile()));
     connect(this, SIGNAL(filesToWrite(QStringList)),  this, SLOT(writeFile(QStringList)));
@@ -95,7 +95,7 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
 
     //!Desabilita os botões de comunicação até que esteja conectado
     this->readButton->setDisabled(true);
-    this->writeButton->setDisabled(true);
+    //this->writeButton->setDisabled(true);
     this->deleteButton->setDisabled(true);
 
     /*! Os métodos de interação serial formata a mensagem e emitem um sinal para a escrita.
@@ -130,11 +130,17 @@ void MainWindow::listFiles()
 
 void MainWindow::connectToSerial()
 {
+    ui->groupBox_connect->setTitle("Connecting...");
     //Se a porta estiver aberta, ele fecha e sai...
     if (this->serialPort->isOpen()){
         this->serialPort->close();
+        ui->groupBox_connect->setTitle("Disconnected");
         ui->label_status->setText("Disconnected");
         ui->pushButton_connect->setText("Connect");
+        ui->comboBox_baud->setEnabled(true);
+        ui->comboBox_port->setEnabled(true);
+        this->deleteButton->setDisabled(true);
+        this->readButton->setDisabled(true);
         /*
          * Limpa os dados vindos da serial ao desconectar
          *  para não entrar em loop
@@ -146,6 +152,11 @@ void MainWindow::connectToSerial()
         return;
     }
 
+    this->deleteButton->setDisabled(false);
+    this->readButton->setDisabled(false);
+    ui->comboBox_baud->setEnabled(false);
+    ui->comboBox_port->setEnabled(false);
+
     //...se não, pega os valores dos combos para iniciar a conexão...
     this->serialPort->setPortName(ui->comboBox_port->currentText());
     this->serialPort->setBaudRate(ui->comboBox_baud->currentText().toUInt());
@@ -153,6 +164,7 @@ void MainWindow::connectToSerial()
     //...e abre a porta aqui.
     if (!this->serialPort->open(QIODevice::ReadWrite)){
         ui->label_status->setText("Failed to connect");
+        ui->groupBox_connect->setTitle("Connection failed");
         return;
     }
 
@@ -163,6 +175,7 @@ void MainWindow::connectToSerial()
     //const QMimeData *mimeData = new QMimeData();
     listFiles();
     //emit fromSerial(NULL, QString("serial"));
+    ui->groupBox_connect->setTitle("Connected");
 
 }
 
@@ -195,12 +208,26 @@ void MainWindow::serialWrite()
         qDebug() << "PORTA FECHADA (serialWrite())"; //TODO: ver quais debugs precisa virar DIALOG
         return;
     }
+
     ui->pushButton_connect->setText("Disconnect");
     this->serialPort->write(this->msg.toUtf8());
     while (!this->serialPort->waitForBytesWritten(3000));
     while (this->serialPort->waitForReadyRead(2000));
     QByteArray data = this->serialPort->readAll();
-    //qDebug() << data << " data";
+    if (this->do_edit){
+       this->do_edit = false;
+        QMessageBox msgBox;
+        msgBox.setText(data.replace("#",""));
+        QTimer timer;
+        timer.setSingleShot(true);
+        connect(&timer, &QTimer::timeout,[&]{msgBox.close();});
+        timer.start(3000);
+        msgBox.exec();
+        qDebug() << "##########INICIO###########";
+        qDebug() << data << " data";
+        qDebug() << "###########FIM#############";
+    }
+
     QString clearFirst = QString::fromUtf8(data);
     clearFirst.replace("^","");
     this->dataFromSerial << clearFirst.split("\r\n");
@@ -230,16 +257,55 @@ void MainWindow::renameFile(QString orig, QString newName)
     this->lastItemChanged << this->renamedFile;
     this->msg = "^" + orig + "-m-" + newName + "$";
     emit sendMsg();
+    QTimer::singleShot(1000, this, &MainWindow::connectToSerial);
+    QTimer::singleShot(200, this, &MainWindow::connectToSerial);
 }
 
 void MainWindow::deleteFile()
 {
-    qDebug() << "delete";
+    int value = formatsTable->currentRow();
+    if (value == -1){
+        //TODO: implementar dialogo
+        return;
+    }
+    this->rowColumnNowValues[0] = value;
+    this->rowColumnNowValues[1] = 0; //o caminho absoluto para serial está na coluna 0
+
+    qDebug() << this->rowColumnNowValues[0] << " ROW";
+    qDebug() << this->rowColumnNowValues[1] << " COL";
+
+    QTableWidgetItem *src = formatsTable->item(this->rowColumnNowValues[0],this->rowColumnNowValues[1]);
+    QString target = src->text();
+    qDebug() << target << " target";
+    qDebug() << "---------";
+    this->msg = "^" + target + "-d-none$";
+    emit sendMsg();
+    QTimer::singleShot(1000, this, &MainWindow::connectToSerial);
+    QTimer::singleShot(200, this, &MainWindow::connectToSerial);
 }
 
 void MainWindow::readFile()
 {
-    qDebug() << "read file";
+    int value = formatsTable->currentRow();
+    if (value == -1){
+        //TODO: implementar dialogo
+        return;
+    }
+    this->rowColumnNowValues[0] = value;
+    this->rowColumnNowValues[1] = 0; //o caminho absoluto para serial está na coluna 0
+
+    qDebug() << this->rowColumnNowValues[0] << " ROW";
+    qDebug() << this->rowColumnNowValues[1] << " COL";
+
+    QTableWidgetItem *src = formatsTable->item(this->rowColumnNowValues[0],this->rowColumnNowValues[1]);
+    QString target = src->text();
+    qDebug() << target << " target";
+    qDebug() << "---------";
+    this->msg = "^" + target + "-r-none$";
+    this->do_edit = true;
+    emit sendMsg();
+    QTimer::singleShot(4000, this, &MainWindow::connectToSerial);
+    QTimer::singleShot(3000, this, &MainWindow::connectToSerial);
 }
 
 void MainWindow::writeFile(QStringList filesToUpload) //perguntar o modo se já existir (append ou overwrite)
@@ -284,11 +350,14 @@ void MainWindow::writeFile(QStringList filesToUpload) //perguntar o modo se já 
         qDebug() << filesToUpload.at(i);
         while (!file.atEnd()) {
             QByteArray line = file.readLine();
-            this->msg = "^" + filesToUpload.at(i).split("/").last() + "-" + flag + "-" + line.replace("\n","") + "$";
+            qDebug() << " <--- LINE";
+            this->msg = "^" + filesToUpload.at(i).split("/").last() + "-" + flag + "-" + line.replace("\n","") + "\n$";
 
             this->serialPort->write(this->msg.toUtf8());
             while (!this->serialPort->waitForBytesWritten(3000));
-            //while (this->serialPort->waitForReadyRead(2000));
+            while (this->serialPort->waitForReadyRead(2000));
+            QByteArray data = this->serialPort->readAll();
+            qDebug() << data << " <--- RETORNO";
 
             flag = "a";
             qDebug() << this->msg;
@@ -297,6 +366,8 @@ void MainWindow::writeFile(QStringList filesToUpload) //perguntar o modo se já 
         file.close();
         qDebug() << "ENVIO DE ARQUIVO CONCLUIDO";
     }
+    QTimer::singleShot(600, this, &MainWindow::connectToSerial);
+    QTimer::singleShot(1200, this, &MainWindow::connectToSerial);
 
     //TODO: 3 - pedir para reconectar para ver se os arquivos estão lá
     qDebug() << filesToUpload << " <---- arquivos a enviar";
@@ -406,9 +477,16 @@ void MainWindow::onTableCellDoubleClicked(int row, int column)
 void MainWindow::helpButtonSlot()
 {
     QMessageBox msgBox;
-    msgBox.setText("Arraste os arquivos para a área designada para carregar na interface.\n"
-                    "Duplo click em Nome se deseja renomear o arquivo antes de enviar\n"
-                    "\n\n"
+    msgBox.setText("You can load and rename files without connect to serial, just drag "
+                    " and drop it to respective area.\n"
+                    "If connected to serial, files on ESP are listed, if exists one.\n"
+                    "\n"
+                    "Double clique on filename to rename it. Single click to select it. "
+                    "Click on delete or read buttons when a filename is selected."
+                    "Operation can be slow, but don't worry, this works !\n"
+                    "\n"
+                    "When finished any operation, serial is automaticly disconnected and"
+                    "re-connected, so the files are listed again.\n\n"
                     "Do bit Ao Byte\n"
                     "www.dobitaobyte.com.br\n"
                     "youtube.com/dobitaobytebrasil\n");
@@ -427,64 +505,17 @@ void MainWindow::tableSerial()
     this->originalFilename.clear();
     this->renamedFile.clear();
     formatsTable->setRowCount(0);
-    copyButton->setEnabled(false);
+    //copyButton->setEnabled(false);
 
     // informação do mime ---------------------------------------
     if (this->dataFromSerial.length() < 1){
         return;
     }
 
-    uint8_t len = this->dataFromSerial.length();
-    filesPath.clear();
-    uint8_t x = 0;
-    for (const QString &format : dataFromSerial) {
-        QTableWidgetItem *formatItem = new QTableWidgetItem(format);
+    //gambi pra não bloquear na função. TODO: colocar dialogo abaixo
+    QTimer::singleShot(100, this, &MainWindow::dropHandler);
 
-        formatItem->setFlags(Qt::ItemIsEnabled);
-        formatItem->setTextAlignment(Qt::AlignTop | Qt::AlignLeft);
 
-        QString text;
-        // informacão do texto (nome, etc) ---------------------------
-        if (format.contains(".ini")) {
-            text = "parameters";
-
-        }
-        else if (format.contains(".txt")) {
-            text = "text";
-        }
-        else if (format.contains(".log")) {
-            text = "logs";
-        }
-
-        qDebug() << "-------";
-        qDebug() << x;
-        qDebug() << len;
-        QString path     = "serial";
-
-        QString filename = dataFromSerial.at(x);
-        qDebug() << filename;
-        qDebug() << "-------";
-
-        int row = formatsTable->rowCount();
-        formatsTable->insertRow(row);
-        formatsTable->setItem(row, 0, new QTableWidgetItem(filename));
-        formatsTable->setItem(row, 1, new QTableWidgetItem(path));
-        x++;
-
-    }//for
-    qDebug() << dataFromSerial;
-
-    connect(formatsTable, &QTableWidget::itemChanged, this, &MainWindow::onTableItemChanged);
-    connect(formatsTable, &QTableWidget::cellDoubleClicked, this, &MainWindow::onTableCellDoubleClicked);
-    //connect(formatsTable, &QTableWidget::cellClicked, this, &MainWindow::onTableCellClicked);
-    //esse tb não deu
-    //connect(formatsTable,SIGNAL(cellClicked(int,int)),this,SLOT(onTableCellClicked(int,int)));
-
-    formatsTable->resizeColumnToContents(0);
-
-#if QT_CONFIG(clipboard)
-    copyButton->setEnabled(formatsTable->rowCount() > 0);
-#endif
 }
 
 void MainWindow::tableLocal(const QMimeData *mimeData)
@@ -495,7 +526,7 @@ void MainWindow::tableLocal(const QMimeData *mimeData)
     this->originalFilename.clear();
     this->renamedFile.clear();
     formatsTable->setRowCount(0);
-    copyButton->setEnabled(false);
+    //copyButton->setEnabled(false);
     if (!mimeData){
         qDebug() << "O TIPO MIME NAO VEIO";
         return;
@@ -569,7 +600,62 @@ void MainWindow::tableLocal(const QMimeData *mimeData)
 
     formatsTable->resizeColumnToContents(0);
 #if QT_CONFIG(clipboard)
-    copyButton->setEnabled(formatsTable->rowCount() > 0);
+    //copyButton->setEnabled(formatsTable->rowCount() > 0);
+#endif
+}
+
+void MainWindow::dropHandler()
+{
+    uint8_t len = this->dataFromSerial.length();
+    filesPath.clear();
+    uint8_t x = 0;
+    for (const QString &format : dataFromSerial) {
+        QTableWidgetItem *formatItem = new QTableWidgetItem(format);
+
+        formatItem->setFlags(Qt::ItemIsEnabled);
+        formatItem->setTextAlignment(Qt::AlignTop | Qt::AlignLeft);
+
+        QString text;
+        // informacão do texto (nome, etc) ---------------------------
+        if (format.contains(".ini")) {
+            text = "parameters";
+
+        }
+        else if (format.contains(".txt")) {
+            text = "text";
+        }
+        else if (format.contains(".log")) {
+            text = "logs";
+        }
+
+        qDebug() << "-------";
+        qDebug() << x;
+        qDebug() << len;
+        QString path     = "serial";
+
+        QString filename = dataFromSerial.at(x);
+        qDebug() << filename;
+        qDebug() << "-------";
+
+        int row = formatsTable->rowCount();
+        formatsTable->insertRow(row);
+        formatsTable->setItem(row, 0, new QTableWidgetItem(filename));
+        formatsTable->setItem(row, 1, new QTableWidgetItem(path));
+        x++;
+
+    }//for
+    qDebug() << dataFromSerial;
+
+    connect(formatsTable, &QTableWidget::itemChanged, this, &MainWindow::onTableItemChanged);
+    connect(formatsTable, &QTableWidget::cellDoubleClicked, this, &MainWindow::onTableCellDoubleClicked);
+    //connect(formatsTable, &QTableWidget::cellClicked, this, &MainWindow::onTableCellClicked);
+    //esse tb não deu
+    //connect(formatsTable,SIGNAL(cellClicked(int,int)),this,SLOT(onTableCellClicked(int,int)));
+
+    formatsTable->resizeColumnToContents(0);
+
+#if QT_CONFIG(clipboard)
+    //copyButton->setEnabled(formatsTable->rowCount() > 0);
 #endif
 }
 
