@@ -216,6 +216,7 @@ void MainWindow::serialWrite()
     QByteArray data = this->serialPort->readAll();
     if (this->do_edit){
        this->do_edit = false;
+        //IMPORTANTE - singleshot de msgbox com timeout. explicar a respeito
         QMessageBox msgBox;
         msgBox.setText(data.replace("#",""));
         QTimer timer;
