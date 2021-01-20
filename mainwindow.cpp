@@ -2,6 +2,10 @@
 #include "ui_mainwindow.h"
 #include "droparea.h"
 
+/* [ PRÓXIMO PASSO ]  - [STATUS]
+ * pegar os arquivos arrastados para a janela e enviar direto para o ESP se estiver conectado - WAITING
+*/
+
 MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
@@ -85,7 +89,7 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     connect(copyButton, &QAbstractButton::clicked, this, &MainWindow::copy);
 
     connect(this->readButton, SIGNAL(clicked(bool)),   this, SLOT(readFile()));
-    connect(this->writeButton, SIGNAL(clicked(bool)),  this, SLOT(writeFile()));
+    connect(this, SIGNAL(filesToWrite(QStringList)),  this, SLOT(writeFile(QStringList)));
     connect(this->deleteButton, SIGNAL(clicked(bool)), this, SLOT(deleteFile()));
     connect(this->UsageHelpButton,SIGNAL(clicked(bool)),this,SLOT(helpButtonSlot()));
 
@@ -162,17 +166,6 @@ void MainWindow::connectToSerial()
 
 }
 
-void MainWindow::sender()
-{
-    //TODO: implementar todos os tratamentos
-    //this->serialPort->write(this->msg.toLocal8Bit());
-}
-
-MainWindow::~MainWindow()
-{
-    delete ui;
-}
-
 void MainWindow::updateFormatsTable(const QMimeData *mimeData, QString source) //TODO: passar "local" como parametro?
 {
     if (source == "local"){
@@ -190,9 +183,9 @@ void MainWindow::updateFormatsTable(const QMimeData *mimeData, QString source) /
 /*!O sinal emit fromSerial(NULL, QString("serial")) está conectado ao
  * slot updateFormatsTable, que avalia a string pra saber se é "serial" ou "local".
  */
-//TODO: Será que alguma flag precisa ser zerada para parar a realimentação da tableWidget?
 void MainWindow::serialWrite()
 {
+    qDebug() << "serialWrite started";
     /*! O método serialWrite é invocado pelo sinal sendMsg dos métodos de manipulação
      *  (writeFile, renameFile etc).
      *  Esse método escreve a mensagem, lê a resposta, guarda na stringList @dataFromSerial
@@ -204,9 +197,7 @@ void MainWindow::serialWrite()
     }
     ui->pushButton_connect->setText("Disconnect");
     this->serialPort->write(this->msg.toUtf8());
-    while (!this->serialPort->waitForBytesWritten(3000)){
-
-    }
+    while (!this->serialPort->waitForBytesWritten(3000));
     while (this->serialPort->waitForReadyRead(2000));
     QByteArray data = this->serialPort->readAll();
     //qDebug() << data << " data";
@@ -233,9 +224,9 @@ void MainWindow::copy()
 
 void MainWindow::renameFile(QString orig, QString newName)
 {   //REMOVER IF
-    if (this->lastItemChanged.contains(this->renamedFile)){
-        return;
-    }
+    //if (this->lastItemChanged.contains(this->renamedFile)){
+    //    return;
+    //}
     this->lastItemChanged << this->renamedFile;
     this->msg = "^" + orig + "-m-" + newName + "$";
     emit sendMsg();
@@ -251,10 +242,20 @@ void MainWindow::readFile()
     qDebug() << "read file";
 }
 
-void MainWindow::writeFile() //perguntar o modo se já existir (append ou overwrite)
+void MainWindow::writeFile(QStringList filesToUpload) //perguntar o modo se já existir (append ou overwrite)
 {
     /*TODO: se a celula não for selecionada ou se não tiver arquivo, row e column
     retornam -1. Validar isso antes de atribuir à variável rowColumnNow[2]*/
+
+    //0 - garantir que está conectado na serial
+    if (!this->serialPort->isOpen()){
+        return;
+        //TODO: dialog
+    }
+
+
+    //PROCEDIMENTO DE INTERAÇÃO COM A TABLE! IMPORTANTE!
+    /*
     int value = formatsTable->currentRow();
     if (value == -1){
         //TODO: implementar dialogo
@@ -267,7 +268,40 @@ void MainWindow::writeFile() //perguntar o modo se já existir (append ou overwr
     qDebug() << this->rowColumnNowValues[0];
     qDebug() << this->rowColumnNowValues[1];
     qDebug() << "---------";
+    */
+
+    //1 - ler conteúdo de cada um dos arquivos da lista filesPath
+    //2 - enviar em loop o conteúdo, sendo o primeiro com 'w' e o segundo com 'a'
+    for (uint8_t i=0;i<filesToUpload.length();i++){
+        if (!QFile::exists(filesToUpload.at(i))){
+            qDebug() << "arquivo" << filesToUpload << "nao encontrado";
+            return;
+        }
+        QFile file(filesToUpload.at(i));
+        file.open(QIODevice::ReadOnly | QIODevice::Text);
+
+        QString flag = "w";
+        qDebug() << filesToUpload.at(i);
+        while (!file.atEnd()) {
+            QByteArray line = file.readLine();
+            this->msg = "^" + filesToUpload.at(i).split("/").last() + "-" + flag + "-" + line.replace("\n","") + "$";
+
+            this->serialPort->write(this->msg.toUtf8());
+            while (!this->serialPort->waitForBytesWritten(3000));
+            //while (this->serialPort->waitForReadyRead(2000));
+
+            flag = "a";
+            qDebug() << this->msg;
+        }
+
+        file.close();
+        qDebug() << "ENVIO DE ARQUIVO CONCLUIDO";
+    }
+
+    //TODO: 3 - pedir para reconectar para ver se os arquivos estão lá
+    qDebug() << filesToUpload << " <---- arquivos a enviar";
 }
+
 /*! onTableItemChanged
 Existem 2 condições para a mudança do valor na célula.
 
@@ -455,6 +489,9 @@ void MainWindow::tableSerial()
 
 void MainWindow::tableLocal(const QMimeData *mimeData)
 {
+    disconnect(formatsTable, &QTableWidget::itemChanged, this, &MainWindow::onTableItemChanged);
+    disconnect(formatsTable, &QTableWidget::cellDoubleClicked, this, &MainWindow::onTableCellDoubleClicked);
+
     this->originalFilename.clear();
     this->renamedFile.clear();
     formatsTable->setRowCount(0);
@@ -519,6 +556,13 @@ void MainWindow::tableLocal(const QMimeData *mimeData)
         }
 
     }//for
+    /*Sinal enviado para @writeFile, encarregado de preparar o conteúdo para envio.
+     * O envio é feito exclusivamente pelo método @serialWrite, que é chamado pelo
+     * primeiro método após concluir o tratamento.
+     * Deverá ocorrer uma série de escritas na serial.
+   */
+    emit filesToWrite(filesPath);
+
 
     connect(formatsTable, &QTableWidget::itemChanged, this, &MainWindow::onTableItemChanged);
     connect(formatsTable, &QTableWidget::cellDoubleClicked, this, &MainWindow::onTableCellDoubleClicked);
@@ -527,4 +571,9 @@ void MainWindow::tableLocal(const QMimeData *mimeData)
 #if QT_CONFIG(clipboard)
     copyButton->setEnabled(formatsTable->rowCount() > 0);
 #endif
+}
+
+MainWindow::~MainWindow()
+{
+    delete ui;
 }

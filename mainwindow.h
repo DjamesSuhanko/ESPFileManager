@@ -63,8 +63,7 @@ public slots:
     void listFiles();
     void readFile();
     //void removeAllFiles();
-    void sender();
-    void writeFile();
+    void writeFile(QStringList filesToUpload);
     void renameFile(QString orig, QString newName);
     void onTableItemChanged(QTableWidgetItem *item);
     void onTableCellDoubleClicked(int row, int column);
@@ -77,6 +76,7 @@ signals:
     void isDone();
     void fromSerial(const QMimeData *mimeData, QString source);
     void signalListFiles();
+    void filesToWrite(QStringList filesTo);
 
 private:
     Ui::MainWindow *ui;
